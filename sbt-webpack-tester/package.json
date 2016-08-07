@@ -1,0 +1,6 @@
+{
+  "name": "sbt-webpack-tester",
+  "devDependencies": {
+    "webpack": "^1.13.1"
+  }
+}
