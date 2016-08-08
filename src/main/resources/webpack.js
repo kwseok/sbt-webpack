@@ -5,7 +5,7 @@
 
     const _ = require('lodash');
     const webpack = require('webpack');
-    const webpackConfig = _.extend(require(process.argv[2]), JSON.parse(process.argv[3]), {watch: false});
+    const webpackConfig = _.merge(require(process.argv[2]), JSON.parse(process.argv[3]), {watch: false});
 
     webpack(webpackConfig, function(err, stats) {
         if (err) throw err;
