@@ -27,15 +27,15 @@ object SbtWebpack extends AutoPlugin {
 
   import autoImport.WebpackKeys._
 
-  override def projectSettings: Seq[Setting[_]] = Seq(Assets, TestAssets).flatMap { config =>
-    Seq(
-      webpackConfig in config := baseDirectory.value / "webpack.config.js",
-      resourceGenerators in config <+= webpack in config,
-      resourceManaged in webpack in config := webTarget.value / webpack.key.label / (if (config == Assets) "main" else "test"),
-      resourceDirectories in config += (resourceManaged in webpack in config).value,
-      webpack in config := runWebpack(config).dependsOn(webJarsNodeModules in Plugin).dependsOn(npmNodeModules in config).value
-    )
-  }
+  override def projectSettings: Seq[Setting[_]] = Seq(
+    resourceManaged in webpack in Assets := webTarget.value / webpack.key.label / "main",
+    resourceManaged in webpack in TestAssets := webTarget.value / webpack.key.label / "test"
+  ) ++ Seq(Assets, TestAssets).flatMap(config => Seq(
+    webpackConfig in config := baseDirectory.value / "webpack.config.js",
+    resourceGenerators in config <+= webpack in config,
+    managedResourceDirectories in config += (resourceManaged in webpack in config).value,
+    webpack in config := runWebpack(config).dependsOn(nodeModules in Plugin).value
+  ))
 
   case object WebpackFailure extends NoStackTrace with UnprintableException
 
