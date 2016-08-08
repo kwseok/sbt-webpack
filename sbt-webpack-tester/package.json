@@ -1,5 +1,5 @@
 {
-  "name": "sbt-webpack-tester",
+  "private": true,
   "devDependencies": {
     "webpack": "^1.13.1"
   }
