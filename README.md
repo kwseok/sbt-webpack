@@ -7,7 +7,7 @@ Add plugin
 Add the plugin to `project/plugins.sbt`.
 
 ```scala
-addSbtPlugin("io.teamscala.sbt" % "sbt-webpack" % "1.0.2")
+addSbtPlugin("io.teamscala.sbt" % "sbt-webpack" % "1.0.3")
 ```
 
 Your project's build file also needs to enable sbt-web plugins. For example with build.sbt:
@@ -27,7 +27,7 @@ Configuration
 -------------
 
 ```scala
-webpackConfig in webpack := [location of config file]
+WebpackKeys.config := [location of config file]
 ```
 (if not set, defaults to baseDirectory / "webpack.config.js")
 

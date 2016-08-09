@@ -19,41 +19,37 @@ object SbtWebpack extends AutoPlugin {
   override def trigger = AllRequirements
 
   object autoImport {
+    val webpack = TaskKey[Seq[File]]("webpack", "Run the webpack module bundler.")
+
     object WebpackKeys {
-      val webpack       = TaskKey[Seq[File]]("webpack", "Run the webpack module bundler.")
-      val webpackConfig = SettingKey[File]("webpackConfig", "The location of a webpack configuration file.")
+      val config = SettingKey[File]("webpackConfig", "The location of a webpack configuration file.")
     }
   }
 
+  import autoImport._
   import autoImport.WebpackKeys._
 
   override def projectSettings: Seq[Setting[_]] = Seq(
-    resourceManaged in webpack in Assets := webTarget.value / webpack.key.label / "main",
-    resourceManaged in webpack in TestAssets := webTarget.value / webpack.key.label / "test"
-  ) ++ Seq(Assets, TestAssets).flatMap(config => Seq(
-    webpackConfig in config := baseDirectory.value / "webpack.config.js",
-    resourceGenerators in config <+= webpack in config,
-    managedResourceDirectories in config += (resourceManaged in webpack in config).value,
-    webpack in config := runWebpack(config).dependsOn(nodeModules in Plugin).value
-  ))
+    resourceManaged in webpack := webTarget.value / webpack.key.label,
+    resourceGenerators in Assets <+= webpack,
+    managedResourceDirectories in Assets += (resourceManaged in webpack).value,
+    webpack <<= runWebpack dependsOn (nodeModules in Plugin, nodeModules in Assets, webModules in Assets),
+    config := baseDirectory.value / "webpack.config.js"
+  )
 
-  case object WebpackFailure extends NoStackTrace with UnprintableException
+  case object WebpackFailure extends NoStackTrace
 
-  private def runWebpack(config: Configuration): Def.Initialize[Task[Seq[File]]] = Def.task {
-    val configFile = (webpackConfig in config).value
+  private def relativizedPath(base: File, file: File): String =
+    relativeTo(base)(file).getOrElse(file.absolutePath)
 
-    val include = (includeFilter in webpack in config).value
-    val exclude = (excludeFilter in webpack in config).value
-    val sourceDir = (sourceDirectory in webpack in config).value
-    val inputFiles = (sourceDir ** (include && -exclude)).get.filterNot(_.isDirectory)
+  private def runWebpack: Def.Initialize[Task[Seq[File]]] = Def.task {
+    val context = (sourceDirectory in webpack).value
+    val outputPath = (resourceManaged in webpack).value
 
-    val cachedFn = FileFunction.cached(streams.value.cacheDirectory / "run", FilesInfo.lastModified, FilesInfo.exists) { _ =>
-      val relativizedConfigPath = IO.relativize(baseDirectory.value, configFile).getOrElse(configFile.absolutePath)
-      streams.value.log.info(s"Webpack building by $relativizedConfigPath")
+    val runUpdate = FileFunction.cached(streams.value.cacheDirectory / webpack.key.label, FilesInfo.hash) { _ =>
+      streams.value.log.info(s"Webpack running by ${relativizedPath(baseDirectory.value, config.value)}")
 
-      val outputDir = (resourceManaged in webpack in config).value
-
-      val nodeModulePaths = (nodeModuleDirectories in Plugin).value.map(_.getPath)
+      val nodeModulePaths = (nodeModuleDirectories in Plugin).value.map(_.getCanonicalPath)
 
       val webpackExecutable = SbtWeb.copyResourceTo(
         (target in Plugin).value / webpack.key.label,
@@ -61,33 +57,33 @@ object SbtWebpack extends AutoPlugin {
         streams.value.cacheDirectory / "copy-resource"
       )
 
-      val args = Seq(configFile.absolutePath, JsObject(
-        "context" -> JsString(sourceDir.absolutePath),
+      val args = Seq(config.value.absolutePath, JsObject(
+        "context" -> JsString(context.absolutePath),
         "output" -> JsObject(
-          "path" -> JsString(outputDir.absolutePath)
+          "path" -> JsString(outputPath.absolutePath)
         )
       ).toString())
 
-      val execution = try {
-        SbtJsTask.executeJs(
-          state.value,
-          (engineType in webpack).value,
-          (command in webpack).value,
-          nodeModulePaths,
-          webpackExecutable,
-          args,
-          (timeoutPerSource in webpack).value
-        )
-      } catch {
+      val execution = try SbtJsTask.executeJs(
+        state.value,
+        (engineType in webpack).value,
+        (command in webpack).value,
+        nodeModulePaths,
+        webpackExecutable,
+        args,
+        (timeoutPerSource in webpack).value
+      ) catch {
         case _: JsTaskFailure => throw WebpackFailure
       }
       execution match {
-        case Seq(JsBoolean(true))  => //Success
+        case Seq(JsBoolean(true))  => outputPath.***.get.toSet
         case Seq(JsBoolean(false)) => throw WebpackFailure
       }
-
-      outputDir.***.get.toSet
     }
-    cachedFn((configFile +: inputFiles).toSet).toSeq
+
+    val include = (includeFilter in webpack).value
+    val exclude = (excludeFilter in webpack).value
+    val inputFiles = (context ** (include && -exclude)).get.filterNot(_.isDirectory)
+    runUpdate((config.value +: inputFiles).toSet).filter(_.isFile).toSeq
   }
 }
