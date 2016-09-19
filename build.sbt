@@ -1,6 +1,6 @@
 sbtPlugin := true
 
-organization := "io.teamscala.sbt"
+organization := "com.github.stonexx.sbt"
 
 name := "sbt-webpack"
 

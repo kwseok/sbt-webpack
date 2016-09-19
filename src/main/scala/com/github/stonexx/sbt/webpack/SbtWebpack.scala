@@ -1,4 +1,4 @@
-package io.teamscala.sbt.webpack
+package com.github.stonexx.sbt.webpack
 
 import com.typesafe.sbt.jse._
 import com.typesafe.sbt.jse.JsEngineImport.JsEngineKeys._
