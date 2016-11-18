@@ -31,5 +31,13 @@ WebpackKeys.config := [location of config file]
 ```
 (if not set, defaults to baseDirectory / "webpack.config.js")
 
+You need to set the source filters to include the same resources that are matched by the module loaders. For example:
+```scala
+includeFilter in webpack := "*.js"
+```
+See [how to include/exclude files in the source directory](http://www.scala-sbt.org/1.0/docs/Howto-Customizing-Paths.html#Include%2Fexclude+files+in+the+source+directory) for how to configure this setting.
+
+Make sure that this stays in sync with the webpack configuration otherwise sbt will not invalidate the cache and resources will not be regenerated correctly.
+
 ## License
 `sbt-webpack` is licensed under the [Apache License, Version 2.0](https://github.com/stonexx/sbt-webpack/blob/master/LICENSE)
