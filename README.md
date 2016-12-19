@@ -7,7 +7,7 @@ Add plugin
 Add the plugin to `project/plugins.sbt`.
 
 ```scala
-addSbtPlugin("com.github.stonexx.sbt" % "sbt-webpack" % "1.0.6")
+addSbtPlugin("com.github.stonexx.sbt" % "sbt-webpack" % "1.0.7")
 ```
 
 Your project's build file also needs to enable sbt-web plugins. For example with build.sbt:
@@ -16,7 +16,9 @@ Your project's build file also needs to enable sbt-web plugins. For example with
 
 From the sbt console:
 
-* Run webpack with `webpack:run`
+* Run webpack production mode with `webpack:run` or `webpack-prod:run`
+* Run webpack development mode with `webpack-dev:run`
+* Run webpack testing mode with `webpack-test:run`
 * Start watch mode with `webpack:startWatch`
 * Stop watch mode with `webpack:stopWatch`
 
@@ -33,7 +35,7 @@ Configuration
 -------------
 
 ```scala
-WebpackKeys.config := [location of config file]
+WebpackKeys.config in Webpack := [location of config file]
 ```
 (if not set, defaults to baseDirectory / "webpack.config.js")
 
