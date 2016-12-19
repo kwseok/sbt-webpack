@@ -20,4 +20,5 @@ sbt-webpack-tester/bundles
 # Idea specific
 .idea/
 
+yarn.lock
 node_modules/

@@ -11,7 +11,8 @@ resolvers ++= Seq(
   Resolver.jcenterRepo
 )
 
-libraryDependencies += "org.webjars.npm" % "lodash" % "4.14.1"
+libraryDependencies += "org.webjars" % "npm" % "4.0.2"
+libraryDependencies += "org.webjars.npm" % "lodash" % "4.17.2"
 
 addSbtPlugin("com.typesafe.sbt" %% "sbt-js-engine" % "1.1.4")
 

@@ -7,7 +7,7 @@ Add plugin
 Add the plugin to `project/plugins.sbt`.
 
 ```scala
-addSbtPlugin("com.github.stonexx.sbt" % "sbt-webpack" % "1.0.4")
+addSbtPlugin("com.github.stonexx.sbt" % "sbt-webpack" % "1.0.5")
 ```
 
 Your project's build file also needs to enable sbt-web plugins. For example with build.sbt:
@@ -18,7 +18,7 @@ Add webpack as a devDependancy to your package.json file (located at the root of
 ```json
 {
   "devDependencies": {
-    "webpack": "^1.13.1"
+    "webpack": "^1.14.0"
   }
 }
 ```

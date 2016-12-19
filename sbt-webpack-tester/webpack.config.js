@@ -1,11 +1,10 @@
 const path = require('path');
-const srcDir = path.join(__dirname, '/src/main/assets');
-const outDir = path.join(__dirname, '/target/web/webpack');
 
 module.exports = {
-  entry: path.join(srcDir, 'javascripts/entry.js'),
+  context: path.join(__dirname, '/src/main/assets'),
+  entry: './javascripts/entry.js',
   output: {
-    path: outDir,
+    path: path.join(__dirname, '/target/web/webpack'),
     filename: 'javascripts/bundle.js'
   }
 };
