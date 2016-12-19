@@ -7,12 +7,23 @@ Add plugin
 Add the plugin to `project/plugins.sbt`.
 
 ```scala
-addSbtPlugin("com.github.stonexx.sbt" % "sbt-webpack" % "1.0.5")
+addSbtPlugin("com.github.stonexx.sbt" % "sbt-webpack" % "1.0.6")
 ```
 
 Your project's build file also needs to enable sbt-web plugins. For example with build.sbt:
 
     lazy val root = (project.in file(".")).enablePlugins(SbtWeb)
+
+As with all sbt-web asset pipeline plugins you must declare their order of execution:
+
+```scala
+pipelineStages := Seq(run in Webpack)
+```
+
+From the sbt console:
+
+* Start watch mode with `webpack:startWatch`
+* Stop watch mode with `webpack:stopWatch`
 
 Add webpack as a devDependancy to your package.json file (located at the root of your project):
 ```json
@@ -33,7 +44,7 @@ WebpackKeys.config := [location of config file]
 
 You need to set the source filters to include the same resources that are matched by the module loaders. For example:
 ```scala
-includeFilter in webpack := "*.js"
+includeFilter in Webpack := "*.js"
 ```
 See [how to include/exclude files in the source directory](http://www.scala-sbt.org/1.0/docs/Howto-Customizing-Paths.html#Include%2Fexclude+files+in+the+source+directory) for how to configure this setting.
 

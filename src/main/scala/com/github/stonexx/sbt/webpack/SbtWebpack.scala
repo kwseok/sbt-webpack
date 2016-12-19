@@ -23,11 +23,12 @@ object SbtWebpack extends AutoPlugin {
   override def trigger = AllRequirements
 
   object autoImport {
-    val webpack          : TaskKey[Unit] = TaskKey[Unit]("webpack", "Run the webpack module bundler.")
-    val webpackWatchStart: TaskKey[Unit] = TaskKey[Unit]("webpackWatchStart", "Start watch the webpack module bundler.")
-    val webpackWatchStop : TaskKey[Unit] = TaskKey[Unit]("webpackWatchStop", "Stop watch the webpack module bundler.")
+    val Webpack: Configuration = config("webpack")
 
     object WebpackKeys {
+      val startWatch: TaskKey[Unit] = TaskKey[Unit]("startWatch", "Start the webpack module bundler for watch mode.")
+      val stopWatch : TaskKey[Unit] = TaskKey[Unit]("stopWatch", "Stop the webpack module bundler for watch mode.")
+
       val config  : SettingKey[File]                   = SettingKey[File]("webpackConfig", "The location of a webpack configuration file.")
       val envVars : SettingKey[Map[String, String]]    = SettingKey[Map[String, String]]("webpackEnvVars", "Environment variable names and values to set for webpack.")
       val contexts: TaskKey[Seq[File]]                 = TaskKey[Seq[File]]("webpackContexts", "The locations of a webpack contexts.")
@@ -67,8 +68,8 @@ object SbtWebpack extends AutoPlugin {
   )
 
   override def projectSettings: Seq[Setting[_]] = Seq(
-    includeFilter in webpack := AllPassFilter,
-    excludeFilter in webpack := HiddenFileFilter,
+    includeFilter in Webpack := AllPassFilter,
+    excludeFilter in Webpack := HiddenFileFilter,
 
     config := baseDirectory.value / "webpack.config.js",
 
@@ -81,17 +82,17 @@ object SbtWebpack extends AutoPlugin {
     contexts in TestAssets := resolveContexts(TestAssets).value,
     contexts := (contexts in Assets).value,
 
-    webpack in Assets := runWebpack(Assets).dependsOn(webpackDependTasks: _*).value,
-    webpack in TestAssets := runWebpack(TestAssets).dependsOn(webpackDependTasks: _*).value,
-    webpack := (webpack in Assets).value,
+    run in Webpack in Assets := runWebpack(Assets).dependsOn(webpackDependTasks: _*).value,
+    run in Webpack in TestAssets := runWebpack(TestAssets).dependsOn(webpackDependTasks: _*).value,
+    run in Webpack := (run in Webpack in Assets).evaluated,
 
-    webpackWatchStart := state.value.start(new WebpackWatcher {
+    startWatch in Webpack := state.value.start(new WebpackWatcher {
       private[this] var process: Option[Process] = None
 
       def start(): Unit = {
         state.value.log.info(s"start webpack watcher by ${relativizedPath(baseDirectory.value, config.value)}")
 
-        IO.delete((streams in webpack).value.cacheDirectory / "run")
+        IO.delete((streams in Webpack).value.cacheDirectory / "run")
 
         process = Some(forkNode(
           baseDirectory.value,
@@ -112,8 +113,8 @@ object SbtWebpack extends AutoPlugin {
         process = None
       }
     }),
-    webpackWatchStart := webpackWatchStart.dependsOn(webpackDependTasks: _*).value,
-    webpackWatchStop := state.value.stop(),
+    startWatch in Webpack := (startWatch in Webpack).dependsOn(webpackDependTasks: _*).value,
+    stopWatch in Webpack := state.value.stop(),
     onLoad in Global := (onLoad in Global).value.andThen { state =>
       state.put(runner, new WebpackWatcherRunner)
     }
@@ -124,7 +125,7 @@ object SbtWebpack extends AutoPlugin {
 
   private def getWebpackScript: Def.Initialize[Task[File]] = Def.task {
     SbtWeb.copyResourceTo(
-      (target in Plugin).value / webpack.key.label,
+      (target in Plugin).value / Webpack.name,
       getClass.getClassLoader.getResource("webpack.js"),
       streams.value.cacheDirectory / "copy-resource"
     )
@@ -132,7 +133,7 @@ object SbtWebpack extends AutoPlugin {
 
   private def resolveContexts(config: Configuration): Def.Initialize[Task[Seq[File]]] = Def.task {
     val resolveContextsScript = SbtWeb.copyResourceTo(
-      (target in Plugin).value / webpack.key.label,
+      (target in Plugin).value / Webpack.name,
       getClass.getClassLoader.getResource("resolve-contexts.js"),
       streams.value.cacheDirectory / "copy-resource"
     )
@@ -181,8 +182,8 @@ object SbtWebpack extends AutoPlugin {
       doClean(cacheDir.getParentFile.*(DirectoryFilter).get, Seq(cacheDir))
     }
 
-    val include = (includeFilter in webpack in config).value
-    val exclude = (excludeFilter in webpack in config).value
+    val include = (includeFilter in Webpack in config).value
+    val exclude = (excludeFilter in Webpack in config).value
     val inputFiles = (contexts in config).value.flatMap(_.**(include && -exclude).get).filterNot(_.isDirectory)
 
     runUpdate((configFile +: inputFiles).toSet)
