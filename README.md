@@ -36,6 +36,9 @@ Configuration
 
 ```scala
 WebpackKeys.config in Webpack := [location of config file]
+WebpackKeys.config in WebpackModes.Dev := [location of config file for development mode]
+WebpackKeys.config in WebpackModes.Prod := [location of config file for production mode]
+WebpackKeys.config in WebpackModes.Test := [location of config file for testing mode]
 ```
 (if not set, defaults to baseDirectory / "webpack.config.js")
 
