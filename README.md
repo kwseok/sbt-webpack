@@ -14,6 +14,11 @@ Your project's build file also needs to enable sbt-web plugins. For example with
 
     lazy val root = (project.in file(".")).enablePlugins(SbtWeb)
 
+If you want to run the webpack before another task. For example with build.sbt:
+
+    WebKeys.pipeline := WebKeys.pipeline.dependsOn(run in Webpack).value
+    packageBin := packageBin.dependsOn(run in Webpack).value
+
 From the sbt console:
 
 * Run webpack production mode with `webpack:run` or `webpack-prod:run`
