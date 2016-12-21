@@ -1,10 +1,10 @@
 const path = require('path');
 
 module.exports = {
-  context: path.join(__dirname, '/src/main/assets'),
-  entry: './javascripts/entry.js',
+  context: path.join(__dirname, '/src/main/web'),
+  entry: './js/entry.js',
   output: {
-    path: path.join(__dirname, '/target/web/webpack'),
-    filename: 'javascripts/bundle.js'
+    path: path.join(__dirname, '/src/main/public/bundles'),
+    filename: 'bundle.js'
   }
 };
