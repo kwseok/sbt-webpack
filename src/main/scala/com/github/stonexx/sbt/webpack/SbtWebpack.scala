@@ -23,12 +23,13 @@ object SbtWebpack extends AutoPlugin {
   override def trigger = AllRequirements
 
   object autoImport {
-    val webpack     : TaskKey[Unit] = taskKey[Unit]("Start the webpack module bundler.")
-    val webpackDev  : TaskKey[Unit] = taskKey[Unit]("Start the webpack module bundler for development mode.")
-    val webpackProd : TaskKey[Unit] = taskKey[Unit]("Start the webpack module bundler for production mode.")
-    val webpackTest : TaskKey[Unit] = taskKey[Unit]("Start the webpack module bundler for testing mode.")
-    val webpackWatch: TaskKey[Unit] = taskKey[Unit]("Start the webpack module bundler for watch mode.")
-    val webpackStop : TaskKey[Unit] = taskKey[Unit]("Stop the webpack module bundler for watch mode.")
+    val webpack: InputKey[Unit] = inputKey[Unit]("Webpack module bundler.")
+
+    object WebpackModes {
+      val Dev : Configuration = config("dev")
+      val Prod: Configuration = config("prod")
+      val Test: Configuration = config("test")
+    }
 
     object WebpackKeys {
       val config       : SettingKey[File]                   = SettingKey[File]("webpackConfig", "The location of a webpack configuration file.")
@@ -70,63 +71,47 @@ object SbtWebpack extends AutoPlugin {
 
   override def projectSettings: Seq[Setting[_]] = Seq(
     includeFilter in webpack := AllPassFilter,
-    includeFilter in webpackDev := (includeFilter in webpack).value,
-    includeFilter in webpackProd := (includeFilter in webpack).value,
-    includeFilter in webpackTest := (includeFilter in webpack).value,
+    includeFilter in (WebpackModes.Dev, webpack) := (includeFilter in webpack).value,
+    includeFilter in (WebpackModes.Prod, webpack) := (includeFilter in webpack).value,
+    includeFilter in (WebpackModes.Test, webpack) := (includeFilter in webpack).value,
 
     excludeFilter in webpack := HiddenFileFilter,
-    excludeFilter in webpackDev := (excludeFilter in webpack).value,
-    excludeFilter in webpackProd := (excludeFilter in webpack).value,
-    excludeFilter in webpackTest := (excludeFilter in webpack).value,
+    excludeFilter in (WebpackModes.Dev, webpack) := (excludeFilter in webpack).value,
+    excludeFilter in (WebpackModes.Prod, webpack) := (excludeFilter in webpack).value,
+    excludeFilter in (WebpackModes.Test, webpack) := (excludeFilter in webpack).value,
 
     config in webpack := baseDirectory.value / "webpack.config.js",
-    config in webpackDev := (config in webpack).value,
-    config in webpackProd := (config in webpack).value,
-    config in webpackTest := (config in webpack).value,
+    config in (WebpackModes.Dev, webpack) := (config in webpack).value,
+    config in (WebpackModes.Prod, webpack) := (config in webpack).value,
+    config in (WebpackModes.Test, webpack) := (config in webpack).value,
 
     envVars in webpack := LocalEngine.nodePathEnv((WebKeys.nodeModuleDirectories in Plugin).value.map(_.getCanonicalPath).to[immutable.Seq]),
-    envVars in webpackDev := (envVars in webpack).value + ("NODE_ENV" -> "development"),
-    envVars in webpackProd := (envVars in webpack).value + ("NODE_ENV" -> "production"),
-    envVars in webpackTest := (envVars in webpack).value + ("NODE_ENV" -> "testing"),
+    envVars in (WebpackModes.Dev, webpack) := (envVars in webpack).value + ("NODE_ENV" -> "development"),
+    envVars in (WebpackModes.Prod, webpack) := (envVars in webpack).value + ("NODE_ENV" -> "production"),
+    envVars in (WebpackModes.Test, webpack) := (envVars in webpack).value + ("NODE_ENV" -> "testing"),
 
-    webpack := webpackProd.value,
-    webpackDev := runWebpack(webpackDev).dependsOn(webpackDependTasks: _*).value,
-    webpackProd := runWebpack(webpackProd).dependsOn(webpackDependTasks: _*).value,
-    webpackTest := runWebpack(webpackTest).dependsOn(webpackDependTasks: _*).value,
+    webpack := Def.inputTaskDyn {
+      import complete.DefaultParsers._
 
-    webpackWatch := state.value.start(new WebpackWatcher {
-      private[this] var process: Option[Process] = None
+      val arg = (EOF | Seq(
+        "dev",
+        "prod",
+        "test",
+        "watch",
+        "stop"
+      ).map(t => Space ~ token(t)).reduce(_ | _).map(_._2)).parsed
 
-      def start(): Unit = {
-        state.value.log.info(s"Starting webpack watcher by ${relativizedPath(baseDirectory.value, (config in webpackDev).value)}")
+      val cacheDir = streams.value.cacheDirectory
 
-        IO.delete(Seq(
-          (streams in webpackDev).value.cacheDirectory / "run",
-          (streams in webpackProd).value.cacheDirectory / "run",
-          (streams in webpackTest).value.cacheDirectory / "run"
-        ))
-
-        process = Some(forkNode(
-          baseDirectory.value,
-          getWebpackScript.value,
-          List(
-            (config in webpackDev).value.absolutePath,
-            URLEncoder.encode(JsObject("watch" -> JsBoolean(true)).toString, UTF_8)
-          ),
-          (envVars in webpackDev).value,
-          state.value.log
-        ))
+      arg match {
+        case "dev" => Def.taskDyn(runWebpack(cacheDir, WebpackModes.Dev).dependsOn(webpackDependTasks: _*))
+        case "prod" | () => Def.taskDyn(runWebpack(cacheDir, WebpackModes.Prod).dependsOn(webpackDependTasks: _*))
+        case "test" => Def.taskDyn(runWebpack(cacheDir, WebpackModes.Test).dependsOn(webpackDependTasks: _*))
+        case "watch" => Def.taskDyn(webpackWatchStart(cacheDir).dependsOn(webpackDependTasks: _*))
+        case "stop" => Def.taskDyn(webpackWatchStop)
       }
+    }.evaluated,
 
-      def stop(): Unit = {
-        state.value.log.info(s"Stopping webpack watcher by ${relativizedPath(baseDirectory.value, (config in webpackDev).value)}")
-
-        process.foreach(_.destroy())
-        process = None
-      }
-    }),
-    webpackWatch := webpackWatch.dependsOn(webpackDependTasks: _*).value,
-    webpackStop := state.value.stop(),
     onLoad in Global := (onLoad in Global).value.andThen { state =>
       state.put(watcherRunner, new WebpackWatcherRunner)
     },
@@ -139,25 +124,25 @@ object SbtWebpack extends AutoPlugin {
   case class NodeMissingException(cause: Throwable) extends RuntimeException("'node' is required. Please install it and add it to your PATH.", cause)
   case class NodeExecuteFailureException(exitValue: Int) extends RuntimeException("Failed to execute node.")
 
-  private def getWebpackScript: Def.Initialize[Task[File]] = Def.task {
+  private def getWebpackScript(cacheDir: File): Def.Initialize[Task[File]] = Def.task {
     SbtWeb.copyResourceTo(
       (target in Plugin).value / webpack.key.label,
       getClass.getClassLoader.getResource("webpack.js"),
-      (streams in webpack).value.cacheDirectory / "copy-resource" / "webpack"
+      cacheDir / "get-webpack-script"
     )
   }
 
-  private def resolveContexts(scoped: Scoped): Def.Initialize[Task[Seq[File]]] = Def.task {
-    val resolveContextsScript = SbtWeb.copyResourceTo(
+  private def getContexts(cacheDir: File, mode: Configuration): Def.Initialize[Task[Seq[File]]] = Def.task {
+    val getContextsScript = SbtWeb.copyResourceTo(
       (target in Plugin).value / webpack.key.label,
-      getClass.getClassLoader.getResource("resolve-contexts.js"),
-      (streams in webpack).value.cacheDirectory / "copy-resource" / "resolve-contexts"
+      getClass.getClassLoader.getResource("contexts.js"),
+      cacheDir / "get-contexts-script"
     )
     val results = runNode(
       baseDirectory.value,
-      resolveContextsScript,
-      List((config in scoped).value.absolutePath),
-      (envVars in scoped).value,
+      getContextsScript,
+      List((config in (mode, webpack)).value.absolutePath),
+      (envVars in (mode, webpack)).value,
       state.value.log
     )
     import DefaultJsonProtocol._
@@ -177,36 +162,72 @@ object SbtWebpack extends AutoPlugin {
     }
   }
 
-  private def runWebpack(scoped: Scoped): Def.Initialize[Task[Unit]] = Def.task {
+  private def webpackWatchStart(cacheDir: File): Def.Initialize[Task[Unit]] = Def.task {
+    state.value.start(new WebpackWatcher {
+      private[this] var process: Option[Process] = None
+
+      def start(): Unit = {
+        state.value.log.info(s"Starting webpack watcher by ${relativizedPath(baseDirectory.value, (config in (WebpackModes.Dev, webpack)).value)}")
+
+        IO.delete(cacheDir / "run")
+
+        process = Some(forkNode(
+          baseDirectory.value,
+          getWebpackScript(cacheDir).value,
+          List(
+            (config in (WebpackModes.Dev, webpack)).value.absolutePath,
+            URLEncoder.encode(JsObject("watch" -> JsBoolean(true)).toString, UTF_8)
+          ),
+          (envVars in (WebpackModes.Dev, webpack)).value,
+          state.value.log
+        ))
+      }
+
+      def stop(): Unit = {
+        state.value.log.info(s"Stopping webpack watcher by ${relativizedPath(baseDirectory.value, (config in (WebpackModes.Dev, webpack)).value)}")
+
+        process.foreach(_.destroy())
+        process = None
+      }
+    })
+  }
+
+  private def webpackWatchStop: Def.Initialize[Task[Unit]] = Def.task(state.value.stop())
+
+  private def runWebpack(cacheDir: File, mode: Configuration): Def.Initialize[Task[Unit]] = Def.task {
     state.value.get(watcherRunner).foreach(_.stop())
 
-    if (scoped != webpackDev) IO.delete((streams in webpackDev).value.cacheDirectory / "run")
-    if (scoped != webpackProd) IO.delete((streams in webpackProd).value.cacheDirectory / "run")
-    if (scoped != webpackTest) IO.delete((streams in webpackTest).value.cacheDirectory / "run")
+    Seq(
+      WebpackModes.Dev,
+      WebpackModes.Prod,
+      WebpackModes.Test
+    ).filter(_ != mode).foreach { m =>
+      IO.delete(cacheDir / "run" / m.name)
+    }
 
-    val cacheDir = (streams in scoped).value.cacheDirectory / "run"
-    val runUpdate = cached(cacheDir, FilesInfo.hash) { _ =>
-      state.value.log.info(s"Running ${scoped.key.label} by ${relativizedPath(baseDirectory.value, (config in scoped).value)}")
+    val runCacheDir = cacheDir / "run" / mode.name
+    val runUpdate = cached(runCacheDir, FilesInfo.hash) { _ =>
+      state.value.log.info(s"Running ${mode.name} by ${relativizedPath(baseDirectory.value, (config in (mode, webpack)).value)}")
 
       runNode(
         baseDirectory.value,
-        getWebpackScript.value,
+        getWebpackScript(cacheDir).value,
         List(
-          (config in scoped).value.absolutePath,
+          (config in (mode, webpack)).value.absolutePath,
           URLEncoder.encode(JsObject("watch" -> JsBoolean(false)).toString, UTF_8)
         ),
-        (envVars in scoped).value,
+        (envVars in (mode, webpack)).value,
         state.value.log
       )
 
-      doClean(cacheDir.getParentFile.*(DirectoryFilter).get, Seq(cacheDir))
+      doClean(runCacheDir.getParentFile.*(DirectoryFilter).get, Seq(runCacheDir))
     }
 
-    val include = (includeFilter in scoped).value
-    val exclude = (excludeFilter in scoped).value
-    val inputFiles = resolveContexts(scoped).value.flatMap(_.**(include && -exclude).get).filterNot(_.isDirectory)
+    val include = (includeFilter in (mode, webpack)).value
+    val exclude = (excludeFilter in (mode, webpack)).value
+    val inputFiles = getContexts(cacheDir, mode).value.flatMap(_.**(include && -exclude).get).filterNot(_.isDirectory)
 
-    runUpdate(((config in scoped).value +: inputFiles).toSet)
+    runUpdate(((config in (mode, webpack)).value +: inputFiles).toSet)
   }
 
   private def runNode(base: File, script: File, args: List[String], env: Map[String, String], log: Logger): Seq[JsValue] = {
