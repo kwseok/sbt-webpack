@@ -1,6 +1,6 @@
 package com.github.stonexx.sbt.webpack
 
-import java.io.IOException
+import java.io.{IOException, File}
 import java.net.URLEncoder
 
 import com.typesafe.jse.LocalEngine
@@ -107,8 +107,8 @@ object SbtWebpack extends AutoPlugin {
         case "dev" => Def.taskDyn(runWebpack(cacheDir, WebpackModes.Dev).dependsOn(webpackDependTasks: _*))
         case "prod" | () => Def.taskDyn(runWebpack(cacheDir, WebpackModes.Prod).dependsOn(webpackDependTasks: _*))
         case "test" => Def.taskDyn(runWebpack(cacheDir, WebpackModes.Test).dependsOn(webpackDependTasks: _*))
-        case "watch" => Def.taskDyn(webpackWatchStart(cacheDir).dependsOn(webpackDependTasks: _*))
-        case "stop" => Def.taskDyn(webpackWatchStop)
+        case "watch" => Def.taskDyn(startWatch(cacheDir).dependsOn(webpackDependTasks: _*))
+        case "stop" => Def.taskDyn(stopWatch)
       }
     }.evaluated,
 
@@ -146,7 +146,10 @@ object SbtWebpack extends AutoPlugin {
       state.value.log
     )
     import DefaultJsonProtocol._
-    results.headOption.toList.flatMap(_.convertTo[Seq[String]]).map(path => baseDirectory.value / path)
+    results.headOption.toList.flatMap(_.convertTo[Seq[String]]).map { path =>
+      if (path.startsWith("/")) file(path)
+      else baseDirectory.value / path
+    }
   }
 
   private def relativizedPath(base: File, file: File): String =
@@ -162,7 +165,7 @@ object SbtWebpack extends AutoPlugin {
     }
   }
 
-  private def webpackWatchStart(cacheDir: File): Def.Initialize[Task[Unit]] = Def.task {
+  private def startWatch(cacheDir: File): Def.Initialize[Task[Unit]] = Def.task {
     state.value.start(new WebpackWatcher {
       private[this] var process: Option[Process] = None
 
@@ -192,7 +195,7 @@ object SbtWebpack extends AutoPlugin {
     })
   }
 
-  private def webpackWatchStop: Def.Initialize[Task[Unit]] = Def.task(state.value.stop())
+  private def stopWatch: Def.Initialize[Task[Unit]] = Def.task(state.value.stop())
 
   private def runWebpack(cacheDir: File, mode: Configuration): Def.Initialize[Task[Unit]] = Def.task {
     state.value.get(watcherRunner).foreach(_.stop())
