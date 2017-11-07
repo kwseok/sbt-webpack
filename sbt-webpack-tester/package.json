@@ -1,6 +1,6 @@
 {
   "private": true,
   "devDependencies": {
-    "webpack": "^1.14.0"
+    "webpack": "^3.8.1"
   }
 }

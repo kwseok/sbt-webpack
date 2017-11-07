@@ -1,4 +1,4 @@
-const path = require('path');
+const path = require('path')
 
 module.exports = {
   context: path.join(__dirname, '/src/main/web'),
@@ -7,4 +7,4 @@ module.exports = {
     path: path.join(__dirname, '/src/main/public/bundles'),
     filename: 'bundle.js'
   }
-};
+}
