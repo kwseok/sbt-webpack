@@ -1,4 +1,4 @@
-# sbt-webpack
+# sbt-webpack [![Build Status](https://travis-ci.org/stonexx/sbt-webpack.svg?branch=master)](https://travis-ci.org/stonexx/sbt-webpack) 
 An sbt-web plugin for the webpack module bundler.
 
 Add plugin
