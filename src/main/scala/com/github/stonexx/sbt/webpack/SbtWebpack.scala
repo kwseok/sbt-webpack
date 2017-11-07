@@ -103,12 +103,14 @@ object SbtWebpack extends AutoPlugin {
 
       val cacheDir = streams.value.cacheDirectory
 
-      arg match {
-        case "dev" => Def.taskDyn(runWebpack(cacheDir, WebpackModes.Dev).dependsOn(webpackDependTasks: _*))
-        case "prod" | () => Def.taskDyn(runWebpack(cacheDir, WebpackModes.Prod).dependsOn(webpackDependTasks: _*))
-        case "test" => Def.taskDyn(runWebpack(cacheDir, WebpackModes.Test).dependsOn(webpackDependTasks: _*))
-        case "watch" => Def.taskDyn(startWatch(cacheDir).dependsOn(webpackDependTasks: _*))
-        case "stop" => Def.taskDyn(stopWatch)
+      Def.taskDyn {
+        arg match {
+          case "dev" => runWebpack(cacheDir, WebpackModes.Dev).dependsOn(webpackDependTasks: _*)
+          case "prod" | () => runWebpack(cacheDir, WebpackModes.Prod).dependsOn(webpackDependTasks: _*)
+          case "test" => runWebpack(cacheDir, WebpackModes.Test).dependsOn(webpackDependTasks: _*)
+          case "watch" => startWatch(cacheDir).dependsOn(webpackDependTasks: _*)
+          case "stop" => stopWatch
+        }
       }
     }.evaluated,
 
