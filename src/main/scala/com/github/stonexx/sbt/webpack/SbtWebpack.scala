@@ -23,7 +23,8 @@ object SbtWebpack extends AutoPlugin {
   override def trigger = AllRequirements
 
   object autoImport {
-    val webpack: InputKey[Unit] = inputKey[Unit]("Webpack module bundler.")
+    val nodeCmd: SettingKey[String] = settingKey[String]("Node command - defaults to node and should be in the path.")
+    val webpack: InputKey[Unit]     = inputKey[Unit]("Webpack module bundler.")
 
     object WebpackModes {
       val Dev : Configuration = config("dev")
@@ -63,12 +64,6 @@ object SbtWebpack extends AutoPlugin {
   import autoImport._
   import autoImport.WebpackKeys._
 
-  private val webpackDependTasks: Seq[Scoped.AnyInitTask] = Seq(
-    WebKeys.nodeModules in Plugin,
-    WebKeys.nodeModules in Assets,
-    WebKeys.webModules in Assets
-  )
-
   override def projectSettings: Seq[Setting[_]] = Seq(
     includeFilter in webpack := AllPassFilter,
     includeFilter in (WebpackModes.Dev, webpack) := (includeFilter in webpack).value,
@@ -90,6 +85,7 @@ object SbtWebpack extends AutoPlugin {
     envVars in (WebpackModes.Prod, webpack) := (envVars in webpack).value + ("NODE_ENV" -> "production"),
     envVars in (WebpackModes.Test, webpack) := (envVars in webpack).value + ("NODE_ENV" -> "testing"),
 
+    nodeCmd := "node",
     webpack := Def.inputTaskDyn {
       import complete.DefaultParsers._
 
@@ -102,6 +98,12 @@ object SbtWebpack extends AutoPlugin {
       ).map(t => Space ~ token(t)).reduce(_ | _).map(_._2)).parsed
 
       val cacheDir = streams.value.cacheDirectory
+
+      val webpackDependTasks = Seq(
+        WebKeys.nodeModules in Plugin,
+        WebKeys.nodeModules in Assets,
+        WebKeys.webModules in Assets
+      )
 
       Def.taskDyn {
         arg match {
@@ -123,8 +125,8 @@ object SbtWebpack extends AutoPlugin {
     }
   )
 
-  case class NodeMissingException(cause: Throwable) extends RuntimeException("'node' is required. Please install it and add it to your PATH.", cause)
-  case class NodeExecuteFailureException(exitValue: Int) extends RuntimeException("Failed to execute node.")
+  case class CommandMissingException(cmd: String, cause: Throwable) extends RuntimeException(s"'${cmd}' is required. Please install it and add it to your PATH.", cause)
+  case class CommandExecuteFailureException(cmd: String, exitValue: Int) extends RuntimeException(s"Failed to execute ${cmd}.")
 
   private def getWebpackScript(cacheDir: File): Def.Initialize[Task[File]] = Def.task {
     SbtWeb.copyResourceTo(
@@ -140,7 +142,8 @@ object SbtWebpack extends AutoPlugin {
       getClass.getClassLoader.getResource("contexts.js"),
       cacheDir / "get-contexts-script"
     )
-    val results = runNode(
+    val results = runScript(
+      nodeCmd.value,
       baseDirectory.value,
       getContextsScript,
       List((config in (mode, webpack)).value.absolutePath),
@@ -176,7 +179,8 @@ object SbtWebpack extends AutoPlugin {
 
         IO.delete(cacheDir / "run")
 
-        process = Some(forkNode(
+        process = Some(forkScript(
+          nodeCmd.value,
           baseDirectory.value,
           getWebpackScript(cacheDir).value,
           List(
@@ -214,7 +218,8 @@ object SbtWebpack extends AutoPlugin {
     val runUpdate = cached(runCacheDir, FilesInfo.hash) { _ =>
       state.value.log.info(s"Running ${mode.name} by ${relativizedPath(baseDirectory.value, (config in (mode, webpack)).value)}")
 
-      runNode(
+      runScript(
+        nodeCmd.value,
         baseDirectory.value,
         getWebpackScript(cacheDir).value,
         List(
@@ -235,36 +240,36 @@ object SbtWebpack extends AutoPlugin {
     runUpdate(((config in (mode, webpack)).value +: inputFiles).toSet)
   }
 
-  private def runNode(base: File, script: File, args: List[String], env: Map[String, String], log: Logger): Seq[JsValue] = {
+  private def runScript(cmd: String, base: File, script: File, args: List[String], env: Map[String, String], log: Logger): Seq[JsValue] = {
     val resultBuffer = mutable.ArrayBuffer.newBuilder[JsValue]
     val exitValue = try {
       fork(
-        "node" :: script.absolutePath :: args,
+        cmd :: script.absolutePath :: args,
         base, env,
         log.info(_),
         log.error(_),
         line => resultBuffer += JsonParser(line)
       ).exitValue()
     } catch {
-      case e: IOException => throw NodeMissingException(e)
+      case e: IOException => throw CommandMissingException(cmd, e)
     }
     if (exitValue != 0) {
-      throw NodeExecuteFailureException(exitValue)
+      throw CommandExecuteFailureException(cmd, exitValue)
     }
     resultBuffer.result()
   }
 
-  private def forkNode(base: File, script: File, args: List[String], env: Map[String, String], log: Logger): Process =
+  private def forkScript(cmd: String, base: File, script: File, args: List[String], env: Map[String, String], log: Logger): Process =
     try {
-      fork("node" :: script.absolutePath :: args, base, env, log.info(_), log.error(_), _ => ())
+      fork(cmd :: script.absolutePath :: args, base, env, log.info(_), log.error(_), _ => ())
     } catch {
-      case e: IOException => throw NodeMissingException(e)
+      case e: IOException => throw CommandMissingException(cmd, e)
     }
 
   private val ResultEscapeChar: Char = 0x10
 
   private def fork(
-    command: List[String], base: File, env: Map[String, String],
+    cmd: List[String], base: File, env: Map[String, String],
     processOutput: (String => Unit),
     processError: (String => Unit),
     processResult: (String => Unit)
@@ -286,9 +291,9 @@ object SbtWebpack extends AutoPlugin {
       inheritInput = BasicIO.inheritInput(false)
     )
     if (IS_OS_WINDOWS)
-      Process("cmd" :: "/c" :: command, base, env.toSeq: _*).run(io)
+      Process("cmd" :: "/c" :: cmd, base, env.toSeq: _*).run(io)
     else
-      Process(command, base, env.toSeq: _*).run(io)
+      Process(cmd, base, env.toSeq: _*).run(io)
   }
 }
 
