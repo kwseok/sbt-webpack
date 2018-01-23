@@ -4,7 +4,7 @@ organization := "com.github.stonexx.sbt"
 
 name := "sbt-webpack"
 
-scalaVersion := "2.10.6"
+scalaVersion := "2.12.4"
 
 resolvers ++= Seq(
   Resolver.typesafeRepo("releases")
