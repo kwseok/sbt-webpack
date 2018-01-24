@@ -9,13 +9,14 @@ import com.typesafe.sbt.web.SbtWeb
 import com.typesafe.sbt.web.SbtWeb.autoImport.{WebKeys, _}
 import org.apache.commons.compress.utils.CharsetNames.UTF_8
 import org.apache.commons.lang3.SystemUtils.IS_OS_WINDOWS
-import sbt.Defaults.doClean
 import sbt._
 import sbt.Keys._
+import sbt.util.CacheStore
 import spray.json.{JsonParser, DefaultJsonProtocol, JsObject, JsValue, JsBoolean}
 
 import scala.collection.{mutable, immutable}
 import scala.language.implicitConversions
+import scala.sys.process.{ProcessIO, BasicIO, Process}
 
 object SbtWebpack extends AutoPlugin {
   override def requires = SbtJsTask
@@ -158,11 +159,11 @@ object SbtWebpack extends AutoPlugin {
   }
 
   private def relativizedPath(base: File, file: File): String =
-    relativeTo(base)(file).getOrElse(file.absolutePath)
+    IO.relativize(base, file).getOrElse(file.absolutePath)
 
-  private def cached(cacheBaseDirectory: File, inStyle: FilesInfo.Style)(action: Set[File] => Unit): Set[File] => Unit = {
+  private def cached(cacheBaseDirectory: File, inStyle: FileInfo.Style)(action: Set[File] => Unit): Set[File] => Unit = {
     import Path._
-    lazy val inCache = Difference.inputs(cacheBaseDirectory / "in-cache", inStyle)
+    lazy val inCache = Difference.inputs(CacheStore(cacheBaseDirectory / "in-cache"), inStyle)
     inputs => {
       inCache(inputs) { inReport =>
         if (inReport.modified.nonEmpty) action(inReport.modified)
@@ -203,8 +204,27 @@ object SbtWebpack extends AutoPlugin {
 
   private def stopWatch: Def.Initialize[Task[Unit]] = Def.task(state.value.stop())
 
+  private def cleanButPreserve(clean: Seq[File], preserve: Seq[File]): Unit = {
+    // Copied from http://www.scala-sbt.org/0.13/sxr/sbt/Defaults.scala.html#sbt.Defaults.doClean, since
+    // it was removed in 1.x
+    IO.withTemporaryDirectory { temp =>
+      val (dirs, files) = preserve.filter(_.exists).flatMap(_.allPaths.get).partition(_.isDirectory)
+      val mappings = files.zipWithIndex map { case (f, i) => (f, new File(temp, i.toHexString)) }
+      IO.move(mappings)
+      IO.delete(clean)
+      IO.createDirectories(dirs) // recreate empty directories
+      IO.move(mappings.map(_.swap))
+    }
+  }
+
   private def runWebpack(cacheDir: File, mode: Configuration): Def.Initialize[Task[Unit]] = Def.task {
-    state.value.get(watcherRunner).foreach(_.stop())
+    val stateValue = state.value
+    val baseDir = baseDirectory.value
+    val webpackConfig = (config in (mode, webpack)).value
+    val nodeCmdValue = nodeCmd.value
+    val webpackScriptDir = getWebpackScript(cacheDir).value
+    val webpackEnv = (envVars in (mode, webpack)).value
+    stateValue.get(watcherRunner).foreach(_.stop())
 
     Seq(
       WebpackModes.Dev,
@@ -216,21 +236,21 @@ object SbtWebpack extends AutoPlugin {
 
     val runCacheDir = cacheDir / "run" / mode.name
     val runUpdate = cached(runCacheDir, FilesInfo.hash) { _ =>
-      state.value.log.info(s"Running ${mode.name} by ${relativizedPath(baseDirectory.value, (config in (mode, webpack)).value)}")
+      stateValue.log.info(s"Running ${mode.name} by ${relativizedPath(baseDir, webpackConfig)}")
 
       runScript(
-        nodeCmd.value,
-        baseDirectory.value,
-        getWebpackScript(cacheDir).value,
+        nodeCmdValue,
+        baseDir,
+        webpackScriptDir,
         List(
-          (config in (mode, webpack)).value.absolutePath,
+          webpackConfig.absolutePath,
           URLEncoder.encode(JsObject("watch" -> JsBoolean(false)).toString, UTF_8)
         ),
-        (envVars in (mode, webpack)).value,
-        state.value.log
+        webpackEnv,
+        stateValue.log
       )
 
-      doClean(runCacheDir.getParentFile.*(DirectoryFilter).get, Seq(runCacheDir))
+      cleanButPreserve(runCacheDir.getParentFile.*(DirectoryFilter).get, Seq(runCacheDir))
     }
 
     val include = (includeFilter in (mode, webpack)).value
@@ -288,7 +308,7 @@ object SbtWebpack extends AutoPlugin {
         }
       },
       processError = BasicIO.processFully(processError),
-      inheritInput = BasicIO.inheritInput(false)
+      daemonizeThreads = true,
     )
     if (IS_OS_WINDOWS)
       Process("cmd" :: "/c" :: cmd, base, env.toSeq: _*).run(io)
