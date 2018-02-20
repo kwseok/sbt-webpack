@@ -153,7 +153,8 @@ object SbtWebpack extends AutoPlugin {
     )
     import DefaultJsonProtocol._
     results.headOption.toList.flatMap(_.convertTo[Seq[String]]).map { path =>
-      if (path.startsWith("/")) file(path)
+      val pathFile = file(path)
+      if (pathFile.isAbsolute) pathFile
       else baseDirectory.value / path
     }
   }
